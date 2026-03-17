@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Contoso Support</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">
+        <span class="logo-icon">💬</span>
+        <div>
+          <h1>Customer Support</h1>
+          <p class="subtitle">Contoso Online Store</p>
+        </div>
+      </div>
+      <div class="status" id="status">
+        <span class="status-dot"></span>
+        Connecting...
+      </div>
+    </header>
+
+    <div class="chat-area" id="chatArea">
+      <div class="message assistant">
+        <div class="avatar">CS</div>
+        <div class="message-content">
+          <p>Hi there! 👋 I'm your Contoso support assistant. I can help with:</p>
+          <p>📦 <strong>Order tracking</strong> &amp; delivery updates</p>
+          <p>↩️ <strong>Returns</strong> &amp; exchanges</p>
+          <p>🚚 <strong>Shipping</strong> &amp; address changes</p>
+          <p>💳 <strong>Billing</strong> &amp; payment questions</p>
+          <p>What can I help you with?</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="input-area">
+      <input
+        type="text"
+        id="messageInput"
+        placeholder="Ask about an order, return, or anything else..."
+        autocomplete="off"
+      />
+      <button id="sendBtn" onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = '';
+    const sessionId = 'session-' + Math.random().toString(36).substring(2, 10);
+
+    async function checkHealth() {
+      const statusEl = document.getElementById('status');
+      try {
+        const res = await fetch(`${API_BASE}/health`);
+        if (res.ok) {
+          statusEl.innerHTML = '<span class="status-dot online"></span> Online';
+          statusEl.classList.add('online');
+        }
+      } catch {
+        statusEl.innerHTML = '<span class="status-dot offline"></span> Offline';
+        statusEl.classList.add('offline');
+      }
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById('messageInput');
+      const message = input.value.trim();
+      if (!message) return;
+
+      appendMessage('user', message);
+      input.value = '';
+      input.focus();
+
+      const typingEl = appendMessage('assistant', '<span class="typing-dots"><span>.</span><span>.</span><span>.</span></span>');
+      typingEl.classList.add('typing');
+
+      try {
+        const res = await fetch(`${API_BASE}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message, session_id: sessionId }),
+        });
+        const data = await res.json();
+
+        typingEl.querySelector('.message-content').innerHTML = formatMarkdown(data.reply);
+        typingEl.classList.remove('typing');
+
+        if (data.sources && data.sources.length > 0) {
+          const sourcesHtml = data.sources
+            .map(s => `<span class="source-tag">${s}</span>`)
+            .join('');
+          typingEl.querySelector('.message-content').innerHTML +=
+            `<div class="sources">Sources: ${sourcesHtml}</div>`;
+        }
+      } catch {
+        typingEl.querySelector('.message-content').textContent =
+          '😔 Sorry, I couldn\'t process that. Please try again in a moment.';
+        typingEl.classList.remove('typing');
+        typingEl.classList.add('error');
+      }
+    }
+
+    function appendMessage(role, content) {
+      const chatArea = document.getElementById('chatArea');
+      const div = document.createElement('div');
+      div.className = `message ${role}`;
+      const avatar = role === 'user' ? 'You' : 'CS';
+      div.innerHTML = `<div class="avatar">${avatar}</div><div class="message-content">${formatMarkdown(content)}</div>`;
+      chatArea.appendChild(div);
+      chatArea.scrollTop = chatArea.scrollHeight;
+      return div;
+    }
+
+    function formatMarkdown(text) {
+      return text
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/`(.*?)`/g, '<code>$1</code>')
+        .replace(/\n/g, '<br>');
+    }
+
+    document.getElementById('messageInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendMessage();
+    });
+
+    checkHealth();
+  </script>
+</body>
+</html>

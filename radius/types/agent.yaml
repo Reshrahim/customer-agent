@@ -1,0 +1,65 @@
+namespace: Radius.AI
+types:
+  agents:
+    description: |
+      Radius.AI/agents provisions an AI agent with a managed Azure OpenAI model,
+      optional knowledge retrieval (Azure AI Search), and optional observability
+      (Application Insights). The agent connects to shared environment resources
+      such as blob storage and PostgreSQL databases via Radius connections.
+
+      ```
+      extension radius
+      param environment string
+      resource agent 'Radius.AI/agents@2025-08-01-preview' = {
+        name: 'support-agent'
+        properties: {
+          application: myApplication.id
+          environment: environment
+          prompt: 'You are a helpful customer support agent.'
+          model: 'gpt-4.1-mini'
+        }
+      }
+      ```
+    apiVersions:
+      '2025-08-01-preview':
+        schema:
+          type: object
+          properties:
+            environment:
+              type: string
+              description: "(Required) The Radius Environment ID."
+            application:
+              type: string
+              description: "(Optional) The Radius Application ID."
+            prompt:
+              type: string
+              description: "(Required) System prompt for the Agent."
+            model:
+              type: string
+              description: "(Optional) The Azure OpenAI model name. Defaults to 'gpt-4.1-mini'."
+            knowledgeBase:
+              type: string
+              description: "(Optional) The AI Search index name. Defaults to 'agent-kb'."
+            enableObservability:
+              type: boolean
+              description: "(Optional) Enable Application Insights for monitoring. Defaults to true."
+            connections:
+              type: object
+              description: '(Optional) Map of resources the agent resource is dependent on'
+              additionalProperties:
+                type: object
+                properties:
+                  source:
+                    type: string
+                    description: (Required) The resource ID of the resource the agent resource is dependent upon.
+                  disableDefaultEnvVars:
+                    type: boolean
+                    description: (Optional) Disables the automatic injection of environment variables from connected resource properties.
+                required: [source]
+            agentEndpoint:
+              type: string
+              description: "The HTTP endpoint of the agent runtime."
+              readOnly: true
+          required:
+            - environment
+            - prompt

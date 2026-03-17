@@ -1,0 +1,79 @@
+namespace: Radius.Data
+types:
+  postgreSqlDatabases:
+    description: |
+      The Radius.Data/postgreSqlDatabases Resource Type deploys an Azure Database
+      for PostgreSQL Flexible Server with Entra ID (passwordless) authentication.
+
+      ```
+      resource postgresql 'Radius.Data/postgreSqlDatabases@2025-08-01-preview' = {
+        name: 'orders'
+        properties: {
+          environment: environment
+          application: myApplication.id
+          database: 'orders'
+        }
+      }
+      ```
+
+      To connect your container to the database, create a connection from the
+      Container resource to the database as shown below.
+      ```
+      resource frontend 'Radius.Compute/containers@2025-08-01-preview' = {
+        name: 'frontend'
+        properties: {
+          application: myApplication.id
+          environment: environment
+          container: {
+            image: 'frontend:1.25'
+          }
+          connections: {
+            orders: {
+              source: postgresql.id
+            }
+          }
+        }
+      }
+      ```
+
+      The connection automatically injects environment variables:
+      - CONNECTION_ORDERS_HOST
+      - CONNECTION_ORDERS_PORT
+      - CONNECTION_ORDERS_DATABASE
+
+    apiVersions:
+      '2025-08-01-preview':
+        schema:
+          type: object
+          properties:
+            environment:
+              type: string
+              description: "(Required) The Radius Environment ID."
+            application:
+              type: string
+              description: "(Optional) The Radius Application ID."
+            size:
+              type: string
+              enum: ['S', 'M', 'L']
+              description: "(Optional) The size of the PostgreSQL database. Defaults to `S` if not provided."
+            database:
+              type: string
+              description: "(Optional) The name of the database. Defaults to `postgres_db` if not provided."
+            host:
+              type: string
+              description: The fully qualified domain name of the PostgreSQL server.
+              readOnly: true
+            port:
+              type: integer
+              description: The port number used to connect to the database.
+              readOnly: true
+            user:
+              type: string
+              description: The admin username for the PostgreSQL server.
+              readOnly: true
+            password:
+              type: string
+              description: The admin password for the PostgreSQL server.
+              readOnly: true
+          required:
+            - environment

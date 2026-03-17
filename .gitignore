@@ -1,0 +1,19 @@
+# Debug and build artifacts
+debug-logs/
+debug-logs.zip
+debug-logs-fresh.txt
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
