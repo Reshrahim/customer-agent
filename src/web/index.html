@@ -26,12 +26,13 @@
       <div class="message assistant">
         <div class="avatar">CS</div>
         <div class="message-content">
-          <p>Hi there! 👋 I'm your Contoso support assistant. I can help with:</p>
-          <p>📦 <strong>Order tracking</strong> &amp; delivery updates</p>
-          <p>↩️ <strong>Returns</strong> &amp; exchanges</p>
-          <p>🚚 <strong>Shipping</strong> &amp; address changes</p>
-          <p>💳 <strong>Billing</strong> &amp; payment questions</p>
-          <p>What can I help you with?</p>
+          <p>Hi there! 👋 I'm your Contoso support agent. I can <strong>look up info</strong> and <strong>take action</strong> on your behalf:</p>
+          <p>📦 <strong>Order tracking</strong> — look up status, tracking &amp; delivery</p>
+          <p>❌ <strong>Cancel orders</strong> — cancel pending or processing orders</p>
+          <p>↩️ <strong>Initiate returns</strong> — check eligibility &amp; process returns</p>
+          <p>📋 <strong>Escalate issues</strong> — create a support ticket for a human agent</p>
+          <p>📖 <strong>Policy questions</strong> — shipping, returns, loyalty program</p>
+          <p>Try: <em>"Can I return the headphones from order ORD-10001?"</em></p>
         </div>
       </div>
     </div>
@@ -89,11 +90,16 @@
         typingEl.classList.remove('typing');
 
         if (data.sources && data.sources.length > 0) {
+          const ACTION_TOOLS = ['cancel_order', 'initiate_return', 'create_support_ticket'];
           const sourcesHtml = data.sources
-            .map(s => `<span class="source-tag">${s}</span>`)
+            .map(s => {
+              const cls = ACTION_TOOLS.includes(s) ? 'source-tag action' : 'source-tag';
+              const icon = ACTION_TOOLS.includes(s) ? '⚡' : '🔍';
+              return `<span class="${cls}">${icon} ${s}</span>`;
+            })
             .join('');
           typingEl.querySelector('.message-content').innerHTML +=
-            `<div class="sources">Sources: ${sourcesHtml}</div>`;
+            `<div class="sources">Tools used: ${sourcesHtml}</div>`;
         }
       } catch {
         typingEl.querySelector('.message-content').textContent =

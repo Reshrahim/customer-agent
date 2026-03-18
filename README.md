@@ -137,13 +137,30 @@ default   Radius.AI/agents                  bicep          ghcr.io/reshrahim/rec
 default   Radius.Data/postgreSqlDatabases   bicep          ghcr.io/reshrahim/recipes/postgres:1.0
 ```
 
-### 5. Deploy the Customer Support Agent
+### 5. Upload Knowledge Base Documents
+
+Upload the PDF documents from the `knowledge-base/` folder to the blob storage account provisioned by the environment:
+
+```bash
+# Get the storage account name
+STORAGE_ACCOUNT=$(az storage account list --resource-group customer-agent --query "[?tags.\"radius-resource-type\"=='Radius.Storage/blobStorages'].name" -o tsv)
+
+# Upload all PDFs to the documents container
+az storage blob upload-batch \
+  --account-name "$STORAGE_ACCOUNT" \
+  --destination documents \
+  --source knowledge-base/ \
+  --pattern "*.pdf" \
+  --overwrite
+```
+
+### 6. Deploy the Customer Support Agent
 
 ```bash
 rad deploy radius/app.bicep
 ```
 
-Deployment may take 10-15 minutes for Azure resources.
+Deployment may take 15-20 minutes for Azure resources.
 
 ```
 Deployment In Progress...

@@ -25,12 +25,23 @@ var postgresDatabase = context.resource.connections.?postgres.?properties.?datab
 var postgresUser = context.resource.connections.?postgres.?properties.?user ?? ''
 var postgresPassword = context.resource.connections.?postgres.?properties.?password ?? ''
 
+// Blob storage connection from environment (passed via connections)
+var storageEndpoint = context.resource.connections.?blobstorage.?properties.?endpoint ?? ''
+var storageAccountName = context.resource.connections.?blobstorage.?properties.?accountName ?? ''
+var storageAccountKey = context.resource.connections.?blobstorage.?properties.?accountKey ?? ''
+var storageContainer = context.resource.connections.?blobstorage.?properties.?container ?? 'documents'
+
 var uniqueSuffix = uniqueString(context.resource.id, resourceGroup().id)
-var storageAccountName = 'st${take(replace(name, '-', ''), 14)}${take(uniqueSuffix, 6)}'
 
 var tags = {
   'radius-app': name
   'radius-resource-type': 'Radius.AI/agents'
+}
+
+// ── Reference shared Storage Account (provisioned by blobstorage recipe) ─────
+
+resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' existing = {
+  name: storageAccountName
 }
 
 // ── Managed Identity ────────────────────────────────────────
@@ -65,36 +76,6 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   properties: {
     Application_Type: 'web'
     WorkspaceResourceId: logAnalytics.id
-  }
-}
-
-// ── Storage Account ─────────────────────────────────────────
-
-resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
-  name: storageAccountName
-  location: location
-  tags: tags
-  sku: {
-    name: 'Standard_LRS'
-  }
-  kind: 'StorageV2'
-  properties: {
-    accessTier: 'Hot'
-    supportsHttpsTrafficOnly: true
-    minimumTlsVersion: 'TLS1_2'
-  }
-}
-
-resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-01-01' = {
-  parent: storageAccount
-  name: 'default'
-}
-
-resource documentsContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-01-01' = {
-  parent: blobService
-  name: 'documents'
-  properties: {
-    publicAccess: 'None'
   }
 }
 
@@ -188,10 +169,10 @@ resource agentRuntime 'Applications.Core/containers@2023-10-01-preview' = {
           value: knowledgeBase
         }
         CONNECTION_STORAGE_ENDPOINT: {
-          value: 'https://${storageAccount.name}.blob.core.windows.net'
+          value: storageEndpoint
         }
         CONNECTION_STORAGE_KEY: {
-          value: storageAccount.listKeys().keys[0].value
+          value: storageAccountKey
         }
         CONNECTION_MODEL_APIKEY: {
           value: openAi.listKeys().key1
@@ -275,6 +256,7 @@ resource searchSetup 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
     environmentVariables: [
       { name: 'SEARCH_ENDPOINT', value: 'https://${aiSearch.name}.search.windows.net' }
       { name: 'STORAGE_RESOURCE_ID', value: storageAccount.id }
+      { name: 'STORAGE_CONTAINER', value: storageContainer }
       { name: 'INDEX_NAME', value: knowledgeBase }
     ]
     scriptContent: '''#!/bin/bash
@@ -286,7 +268,7 @@ echo "Creating data source ${INDEX_NAME}-ds ..."
 az rest --method PUT \
   --url "${SEARCH_ENDPOINT}/datasources/${INDEX_NAME}-ds?api-version=${API}" \
   --resource "https://search.azure.com" \
-  --body "{\"name\":\"${INDEX_NAME}-ds\",\"type\":\"azureblob\",\"credentials\":{\"connectionString\":\"ResourceId=${STORAGE_RESOURCE_ID};\"},\"container\":{\"name\":\"documents\"}}"
+  --body "{\"name\":\"${INDEX_NAME}-ds\",\"type\":\"azureblob\",\"credentials\":{\"connectionString\":\"ResourceId=${STORAGE_RESOURCE_ID};\"},\"container\":{\"name\":\"${STORAGE_CONTAINER}\"}}"
 
 echo "Creating index ${INDEX_NAME} ..."
 az rest --method PUT \
@@ -315,7 +297,6 @@ output result object = {
   resources: [
     agentIdentity.id
     logAnalytics.id
-    storageAccount.id
     openAi.id
     aiSearch.id
     appInsights.id

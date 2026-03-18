@@ -117,7 +117,7 @@ set -e
 
 apk add --no-cache postgresql-client > /dev/null 2>&1 || true
 
-echo "Creating orders table and seeding data..."
+echo "Creating tables and seeding data..."
 psql -v ON_ERROR_STOP=1 <<'SQL'
 CREATE TABLE IF NOT EXISTS orders (
   id SERIAL PRIMARY KEY,
@@ -131,6 +131,28 @@ CREATE TABLE IF NOT EXISTS orders (
   tracking_number VARCHAR(50),
   estimated_delivery DATE,
   items JSONB NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS returns (
+  id SERIAL PRIMARY KEY,
+  return_number VARCHAR(20) UNIQUE NOT NULL,
+  order_number VARCHAR(20) NOT NULL,
+  items JSONB NOT NULL,
+  reason TEXT NOT NULL,
+  status VARCHAR(30) NOT NULL DEFAULT 'Initiated',
+  refund_amount DECIMAL(10,2),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS support_tickets (
+  id SERIAL PRIMARY KEY,
+  ticket_number VARCHAR(20) UNIQUE NOT NULL,
+  subject VARCHAR(200) NOT NULL,
+  description TEXT NOT NULL,
+  priority VARCHAR(20) NOT NULL DEFAULT 'Normal',
+  status VARCHAR(30) NOT NULL DEFAULT 'Open',
+  order_number VARCHAR(20),
+  created_at TIMESTAMP DEFAULT NOW()
 );
 
 INSERT INTO orders (order_number, customer_name, customer_email, order_date, status, total_amount, shipping_method, tracking_number, estimated_delivery, items)

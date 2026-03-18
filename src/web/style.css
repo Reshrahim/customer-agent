@@ -199,6 +199,11 @@ h1 {
   font-size: 11px;
 }
 
+.source-tag.action {
+  background: #422006;
+  color: #fbbf24;
+}
+
 .input-area {
   display: flex;
   gap: 8px;

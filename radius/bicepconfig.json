@@ -2,6 +2,7 @@
   "extensions": {
     "radius": "br:biceptypes.azurecr.io/radius:edge",
     "radiusAi": "./extensions/radiusai.tgz",
-    "radiusData": "./extensions/radiusdata.tgz"
+    "radiusData": "./extensions/radiusdata.tgz",
+    "radiusStorage": "./extensions/radiusstorage.tgz"
   }
 }

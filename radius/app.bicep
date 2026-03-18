@@ -4,6 +4,8 @@ extension radiusAi
 
 extension radiusData
 
+extension radiusStorage
+
 @description('The Radius environment to deploy to')
 param environment string
 
@@ -52,9 +54,13 @@ resource app 'Applications.Core/applications@2023-10-01-preview' = {
   }
 }
 
-// Shared resource
+// Shared resources
 resource postgresql 'Radius.Data/postgreSqlDatabases@2025-08-01-preview' existing = {
   name: 'postgresql'
+}
+
+resource blobstorage 'Radius.Storage/blobStorages@2025-08-01-preview' existing = {
+  name: 'blobstorage'
 }
 
 // ── Customer Service Agent : agents ─────────────────────────
@@ -70,6 +76,9 @@ resource agent 'Radius.AI/agents@2025-08-01-preview' = {
     connections: {
       postgres: {
         source: postgresql.id
+      }
+      blobstorage: {
+        source: blobstorage.id
       }
     }
   }

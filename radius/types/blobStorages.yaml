@@ -1,0 +1,72 @@
+namespace: Radius.Storage
+types:
+  blobStorages:
+    description: |
+      The Radius.Storage/blobStorages Resource Type deploys an Azure Blob Storage
+      account with a container and optional seed documents.
+
+      ```
+      resource storage 'Radius.Storage/blobStorages@2025-08-01-preview' = {
+        name: 'documents'
+        properties: {
+          environment: environment
+          application: myApplication.id
+          container: 'documents'
+        }
+      }
+      ```
+
+      To connect your container to the blob storage, create a connection from the
+      Container resource to the storage resource as shown below.
+      ```
+      resource frontend 'Radius.Compute/containers@2025-08-01-preview' = {
+        name: 'frontend'
+        properties: {
+          application: myApplication.id
+          environment: environment
+          container: {
+            image: 'frontend:1.25'
+          }
+          connections: {
+            docs: {
+              source: storage.id
+            }
+          }
+        }
+      }
+      ```
+
+      The connection exposes the following properties:
+      - endpoint: The blob service endpoint URL
+      - accountName: The storage account name
+      - accountKey: The storage account access key
+      - container: The blob container name
+
+    apiVersions:
+      '2025-08-01-preview':
+        schema:
+          type: object
+          properties:
+            environment:
+              type: string
+              description: "(Required) The Radius Environment ID."
+            application:
+              type: string
+              description: "(Optional) The Radius Application ID."
+            container:
+              type: string
+              description: "(Optional) The blob container name. Defaults to `documents` if not provided."
+            endpoint:
+              type: string
+              description: The blob service endpoint URL.
+              readOnly: true
+            accountName:
+              type: string
+              description: The storage account name.
+              readOnly: true
+            accountKey:
+              type: string
+              description: The storage account access key.
+              readOnly: true
+          required:
+            - environment
