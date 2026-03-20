@@ -1,7 +1,5 @@
 # Customer Support Agent with Radius
 
-![Radius](https://img.shields.io/badge/Radius-0.55-blue?logo=data:image/svg+xml;base64,) ![Azure](https://img.shields.io/badge/Azure-OpenAI%20%7C%20Search%20%7C%20PostgreSQL-0078D4?logo=microsoftazure) ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
-
 This sample demonstrates how to build and deploy an **agentic AI application** using [Radius](https://radapp.io) — an open-source platform that enables developers and platform engineers to define, deploy, and manage cloud-native applications across any infrastructure.
 
 The application is a customer support agent for the fictional **Contoso Online Store**. Unlike a simple chatbot, this agent autonomously reasons about customer requests, decides which tools to use, takes actions (like cancelling orders or initiating returns), and chains multiple operations together — all powered by [Azure OpenAI](https://learn.microsoft.com/azure/ai-services/openai/) function calling.
