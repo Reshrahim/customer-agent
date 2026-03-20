@@ -8,6 +8,9 @@ param location string = resourceGroup().location
 
 // ── Resolve properties from Radius context ──────────────────
 
+@description('Model version string for the Azure OpenAI deployment')
+param modelVersion string = '2025-04-14'
+
 var name = context.resource.name
 var application = context.resource.properties.application
 var environment = context.resource.properties.environment
@@ -15,7 +18,7 @@ var prompt = context.resource.properties.prompt
 var model = context.resource.properties.?model ?? 'gpt-4.1-mini'
 var knowledgeBase = context.resource.properties.?knowledgeBase ?? 'agent-kb'
 var enableObservability = context.resource.properties.?enableObservability ?? true
-var agentImage = 'ghcr.io/reshrahim/agent-runtime:2.0'
+var agentImage = 'ghcr.io/reshrahim/agent-runtime:3.0'
 var openAiSkuName = 'S0'
 
 // Postgres connection from environment (passed via connections)
@@ -38,13 +41,11 @@ var tags = {
   'radius-resource-type': 'Radius.AI/agents'
 }
 
-// ── Reference shared Storage Account (provisioned by blobstorage recipe) ─────
-
-resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' existing = {
-  name: storageAccountName
-}
-
 // ── Managed Identity ────────────────────────────────────────
+// Used by the deployment script to set up AI Search indexes.
+// The agent-runtime container uses API keys instead of managed identity
+// because workload identity federation requires AKS-specific setup
+// (service account annotation + federated credential) that varies per cluster.
 
 resource agentIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: '${name}-identity'
@@ -130,7 +131,7 @@ resource modelDeployment 'Microsoft.CognitiveServices/accounts/deployments@2023-
     model: {
       format: 'OpenAI'
       name: model
-      version: '2025-04-14'
+      version: modelVersion
     }
   }
 }
@@ -204,15 +205,14 @@ resource agentRuntime 'Applications.Core/containers@2023-10-01-preview' = {
 }
 
 // ── Role Assignments ────────────────────────────────────────
-// Only roles needed for the deployment script and Search indexer.
-// Runtime connections use API keys passed via env vars.
+// These roles are for the deployment script identity and AI Search indexer.
+// The agent-runtime container authenticates via API keys (see note above on managed identity).
 
 // AI Search system identity → read blobs for indexing
 var storageBlobDataReaderRole = '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
 
-resource searchStorageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(storageAccount.id, aiSearch.id, storageBlobDataReaderRole)
-  scope: storageAccount
+resource searchBlobReaderRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storageAccountName, aiSearch.id, storageBlobDataReaderRole)
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataReaderRole)
     principalId: aiSearch.identity.principalId
@@ -247,7 +247,6 @@ resource searchSetup 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
   }
   dependsOn: [
     searchContributorRoleAssignment
-    searchStorageRoleAssignment
   ]
   properties: {
     azCliVersion: '2.63.0'
@@ -255,7 +254,7 @@ resource searchSetup 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
     timeout: 'PT10M'
     environmentVariables: [
       { name: 'SEARCH_ENDPOINT', value: 'https://${aiSearch.name}.search.windows.net' }
-      { name: 'STORAGE_RESOURCE_ID', value: storageAccount.id }
+      { name: 'STORAGE_CONNECTION_STRING', value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccountName};AccountKey=${storageAccountKey};EndpointSuffix=core.windows.net' }
       { name: 'STORAGE_CONTAINER', value: storageContainer }
       { name: 'INDEX_NAME', value: knowledgeBase }
     ]
@@ -268,7 +267,7 @@ echo "Creating data source ${INDEX_NAME}-ds ..."
 az rest --method PUT \
   --url "${SEARCH_ENDPOINT}/datasources/${INDEX_NAME}-ds?api-version=${API}" \
   --resource "https://search.azure.com" \
-  --body "{\"name\":\"${INDEX_NAME}-ds\",\"type\":\"azureblob\",\"credentials\":{\"connectionString\":\"ResourceId=${STORAGE_RESOURCE_ID};\"},\"container\":{\"name\":\"${STORAGE_CONTAINER}\"}}"
+  --body "{\"name\":\"${INDEX_NAME}-ds\",\"type\":\"azureblob\",\"credentials\":{\"connectionString\":\"${STORAGE_CONNECTION_STRING}\"},\"container\":{\"name\":\"${STORAGE_CONTAINER}\"}}"
 
 echo "Creating index ${INDEX_NAME} ..."
 az rest --method PUT \

@@ -105,7 +105,7 @@
       // Tool steps container (hidden until a tool_call event arrives)
       let toolStepsEl = null;
       let toolStepsBody = null;
-      let toolCount = 0;
+      const toolStepEls = [];  // direct DOM references, no global IDs
 
       // Text accumulator
       let fullText = '';
@@ -125,91 +125,97 @@
         const decoder = new TextDecoder();
         let buffer = '';
 
+        function processLine(line) {
+          if (!line.startsWith('data: ')) return;
+          let event;
+          try {
+            event = JSON.parse(line.slice(6));
+          } catch { return; }
+
+          if (event.type === 'tool_call') {
+            if (!toolStepsEl) {
+              toolStepsEl = document.createElement('div');
+              toolStepsEl.className = 'tool-steps';
+              toolStepsEl.innerHTML =
+                '<div class="tool-steps-header" onclick="this.parentElement.classList.toggle(\'collapsed\')">' +
+                  '<span class="tool-steps-toggle">▼</span>' +
+                  '<span class="tool-steps-label">🔧 Agent actions</span>' +
+                '</div>' +
+                '<div class="tool-steps-body"></div>';
+              contentEl.appendChild(toolStepsEl);
+              toolStepsBody = toolStepsEl.querySelector('.tool-steps-body');
+            }
+
+            const label = TOOL_LABELS[event.name] || event.name;
+            const argSummary = Object.values(event.arguments || {}).join(', ');
+            const stepEl = document.createElement('div');
+            stepEl.className = 'tool-step';
+            stepEl.innerHTML =
+              '<div class="tool-step-icon pending">⏳</div>' +
+              '<div class="tool-step-content">' +
+                '<div class="tool-step-name">' + escapeHtml(label + (argSummary ? ' — ' + argSummary : '')) + '</div>' +
+              '</div>';
+            toolStepsBody.appendChild(stepEl);
+            toolStepEls.push(stepEl);
+            scrollToBottom();
+          }
+
+          else if (event.type === 'tool_result') {
+            const stepEl = toolStepEls.find(el => el.querySelector('.tool-step-icon.pending'));
+            if (stepEl) {
+              const iconEl = stepEl.querySelector('.tool-step-icon');
+              iconEl.textContent = '✓';
+              iconEl.classList.remove('pending');
+              const resultDiv = document.createElement('div');
+              resultDiv.className = 'tool-step-result';
+              resultDiv.textContent = summarizeResult(event.result);
+              stepEl.querySelector('.tool-step-content').appendChild(resultDiv);
+            }
+            scrollToBottom();
+          }
+
+          else if (event.type === 'token') {
+            fullText += event.content;
+            renderText(contentEl, toolStepsEl, fullText);
+            scrollToBottom();
+          }
+
+          else if (event.type === 'done') {
+            msgEl.classList.remove('streaming');
+          }
+
+          else if (event.type === 'error') {
+            msgEl.classList.remove('streaming');
+            msgEl.classList.add('error');
+            contentEl.textContent = '😔 Sorry, something went wrong. Please try again.';
+          }
+        }
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split('\n');
-          buffer = lines.pop(); // keep incomplete line in buffer
-
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            let event;
-            try {
-              event = JSON.parse(line.slice(6));
-            } catch { continue; }
-
-            if (event.type === 'tool_call') {
-              // Create tool steps container on first tool call
-              if (!toolStepsEl) {
-                toolStepsEl = document.createElement('div');
-                toolStepsEl.className = 'tool-steps';
-                toolStepsEl.innerHTML =
-                  '<div class="tool-steps-header" onclick="this.parentElement.classList.toggle(\'collapsed\')">' +
-                    '<span class="tool-steps-toggle">▼</span>' +
-                    '<span class="tool-steps-label">🔧 Agent actions</span>' +
-                  '</div>' +
-                  '<div class="tool-steps-body"></div>';
-                contentEl.appendChild(toolStepsEl);
-                toolStepsBody = toolStepsEl.querySelector('.tool-steps-body');
-              }
-
-              toolCount++;
-              const label = TOOL_LABELS[event.name] || event.name;
-              const argSummary = Object.values(event.arguments || {}).join(', ');
-              const stepEl = document.createElement('div');
-              stepEl.className = 'tool-step';
-              stepEl.id = 'tool-step-' + toolCount;
-              stepEl.innerHTML =
-                '<div class="tool-step-icon pending">⏳</div>' +
-                '<div class="tool-step-content">' +
-                  '<div class="tool-step-name">' + escapeHtml(label + (argSummary ? ' — ' + argSummary : '')) + '</div>' +
-                '</div>';
-              toolStepsBody.appendChild(stepEl);
-              scrollToBottom();
-            }
-
-            else if (event.type === 'tool_result') {
-              // Update the latest tool step with a checkmark and result
-              const stepEl = document.getElementById('tool-step-' + toolCount);
-              if (stepEl) {
-                const iconEl = stepEl.querySelector('.tool-step-icon');
-                iconEl.textContent = '✓';
-                iconEl.classList.remove('pending');
-                // Add truncated result
-                const resultDiv = document.createElement('div');
-                resultDiv.className = 'tool-step-result';
-                resultDiv.textContent = summarizeResult(event.result);
-                stepEl.querySelector('.tool-step-content').appendChild(resultDiv);
-              }
-              scrollToBottom();
-            }
-
-            else if (event.type === 'token') {
-              fullText += event.content;
-              // Re-render with markdown
-              renderText(contentEl, toolStepsEl, fullText);
-              scrollToBottom();
-            }
-
-            else if (event.type === 'done') {
-              // Streaming complete
-              msgEl.classList.remove('streaming');
-            }
-
-            else if (event.type === 'error') {
-              msgEl.classList.remove('streaming');
-              msgEl.classList.add('error');
-              contentEl.textContent = '😔 Sorry, something went wrong. Please try again.';
-            }
-          }
+          buffer = lines.pop();
+          for (const line of lines) processLine(line);
         }
+
+        // Flush any remaining data left in the buffer after stream closes
+        if (buffer.trim()) processLine(buffer.trim());
       } catch (e) {
         msgEl.classList.remove('streaming');
         msgEl.classList.add('error');
         contentEl.textContent = '😔 Sorry, I couldn\'t connect. Please try again.';
       } finally {
+        // Safety-net: clear any spinners left behind
+        msgEl.classList.remove('streaming');
+        if (toolStepsBody) {
+          toolStepsBody.querySelectorAll('.tool-step-icon.pending').forEach(el => {
+            el.textContent = '✓';
+            el.classList.remove('pending');
+          });
+        }
         isSending = false;
         sendBtn.disabled = false;
         input.focus();

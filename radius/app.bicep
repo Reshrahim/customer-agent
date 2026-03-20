@@ -16,7 +16,7 @@ param applicationName string = 'customer-agent'
 param registry string = 'ghcr.io/reshrahim'
 
 @description('Image tag')
-param tag string = '2.0'
+param tag string = '3.0'
 
 @description('Azure OpenAI model deployment name')
 param model string = 'gpt-4.1-mini'
