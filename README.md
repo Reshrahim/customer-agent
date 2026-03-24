@@ -104,9 +104,9 @@ The script will output the next steps. Service principal credentials are saved t
 
 </details>
 
-### Step 3 : Install Radius and register the Azure credential
+### Step 3 : Install Radius on the AKS cluster
 
-Verify the current kubectl context is set to the AKS cluster created in the previous step:
+Verify the current `kubectl` context is set to the AKS cluster created in the previous step:
 
 ```bash
 kubectl config current-context
@@ -136,7 +136,7 @@ dynamic-rp           1/1     Running   0          1m
 ucp                  1/1     Running   0          1m
 ```
 
-### Step 1: Create the Resource Types required by the application
+### Step 4: Create the Resource Types required by the application
 
 Resource Types are application abstractions that are infrastructure/cloud provider agnostic. They define the properties that developers can set when they declare resources in their `app.bicep`, and they map to recipes that provision the underlying infrastructure
 
@@ -170,28 +170,7 @@ Radius.Data/postgreSqlDatabases         Radius.Data              ["2025-08-01-pr
 Radius.Storage/blobStorages             Radius.Storage           ["2025-08-01-preview"]
 ```
 
-### Step 2: Bicep extensions
-
-Bicep extensions are similar to libraries that you import into your code. An extension is generated from a Resource Type definition and contains the necessary metadata and type information for Bicep to provide type safety and autocompletion when developers write their `app.bicep`.
-
-> [!IMPORTANT]
->
-> **No action is needed in this step.** The extensions have already been generated and are checked into the repo as `.tgz` files in `radius/extensions/`. The `bicepconfig.json` references them.
-
-The `radius/bicepconfig.json` file maps extension names to their local `.tgz` files:
-
-```json
-{
-  "extensions": {
-    "radius": "br:biceptypes.azurecr.io/radius:edge",
-    "radiusAi": "./extensions/radiusai.tgz",
-    "radiusData": "./extensions/radiusdata.tgz",
-    "radiusStorage": "./extensions/radiusstorage.tgz"
-  }
-}
-```
-
-This enables you to write `extension radiusAi` in your `app.bicep` and then use `resource agent 'Radius.AI/agents@2025-08-01-preview'` with full type safety.
+Bicep **extensions** (pre-generated `.tgz` files in `radius/extensions/`) provide type safety and autocompletion in `app.bicep`. No action needed — they're already checked in and referenced by `bicepconfig.json`.
 
 <details>
 <summary>Regenerating extensions after modifying a type (click to expand)</summary>
@@ -206,23 +185,23 @@ rad bicep publish-extension -f radius/types/blobStorages.yaml --target radius/ex
 
 </details>
 
-### Step 3: Understand the Recipes
-
-A Recipe defines *how* to provision a Resource Type. Recipes are Infrastructure as Code templates, Bicep in this sample, that Radius executes when you deploy a resource of a given type. They receive context from Radius (the resource name, properties, connections) and output infrastructure.
+### Step 5: Understand the Recipes
 
 > [!IMPORTANT]
 >
 > **No action is needed in this step.** The recipes have already been published to `ghcr.io/reshrahim/recipes/`.
 
+A Recipe defines *how* to provision a Resource Type. Recipes are Infrastructure as Code templates, Bicep in this sample, that Radius executes when you deploy a resource of a given type. They receive context from Radius (the resource name, properties, connections) and output infrastructure.
+
 This sample has three recipes:
 
-| Recipe | Type | What it provisions |
-|--------|------|--------------------|  
-| `recipes/agent.bicep` | `Radius.AI/agents` | Azure OpenAI + model deployment, AI Search (index + indexer + data source), Log Analytics + App Insights (for observability), Managed Identity (for deployment scripts), role assignments, and the `agent-runtime` Kubernetes container |
-| `recipes/postgres.bicep` | `Radius.Data/postgreSqlDatabases` | Azure Database for PostgreSQL Flexible Server, database, firewall rule, and seeds 5 sample orders |
-| `recipes/blobstorage.bicep` | `Radius.Storage/blobStorages` | Azure Storage Account with a blob container |
+| Recipe | Resource Type |
+|--------|---------------| 
+| `recipes/agent.bicep` | `Radius.AI/agents` |
+| `recipes/postgres.bicep` | `Radius.Data/postgreSqlDatabases` |
+| `recipes/blobstorage.bicep` | `Radius.Storage/blobStorages` |
 
-The key insight is that the **developer never sees these recipes**. They just declare `resource agent 'Radius.AI/agents' = { ... }` in their `app.bicep`, and Radius automatically finds and executes the matching recipe configured by the platform engineer in the environment.
+**Developer never sees these recipes**. They just declare `resource agent 'Radius.AI/agents' = { ... }` in their `app.bicep`, and Radius automatically finds and executes the matching recipe configured by the platform engineer in the environment.
 
 <details>
 <summary>Republishing recipes after making changes (click to expand)</summary>
@@ -245,7 +224,7 @@ rad bicep publish \
 
 </details>
 
-### Step 4: Create the Radius Environment
+### Step 6: Create the Radius Environment
 
 A Radius Environment is where you configure *which* recipes to use and *where* Azure resources should be provisioned.
 
@@ -325,7 +304,7 @@ default   Radius.Storage/blobStorages       bicep          ghcr.io/reshrahim/rec
 
 </details>
 
-### Step 5: Upload knowledge base documents
+### Step 7: Upload knowledge base documents
 
 The agent uses Azure AI Search for knowledge retrieval (RAG). The search index is populated by an indexer that reads documents from the blob storage container. In this step, you upload the Contoso policy documents, so the agent can answer questions about shipping, returns, and the loyalty program.
 
@@ -352,7 +331,7 @@ az storage blob upload-batch \
 
 Once uploaded, the AI Search indexer (created by the agent recipe in the next step) will automatically index these documents every 5 minutes.
 
-### Step 6: Deploy the application
+### Step 8: Deploy the application
 
 This is where the developer experience comes together. The `app.bicep` file is what a developer writes — it's simple and declarative. It references the shared PostgreSQL and Blob Storage resources, declares an AI agent with a prompt and model, connects everything together, and adds a frontend UI.
 
@@ -388,7 +367,7 @@ Resources:
     frontend-ui     Applications.Core/containers
 ```
 
-### Step 7: Access the application
+### Step 9: Access and Try the application
 
 Port-forward the frontend service to your local machine:
 
@@ -397,8 +376,6 @@ kubectl port-forward svc/frontend-ui 3000:3000 -n azure-customer-agent
 ```
 
 Open **http://localhost:3000** in your browser.
-
-### Step 8: Try it out
 
 Here are some things to try that demonstrate the agentic behavior:
 
@@ -436,7 +413,7 @@ This is unacceptable, I've been waiting 3 weeks and nobody can help me. I want t
 
 The agent will recognize the customer's frustration and call `create_support_ticket` to escalate to a human agent.
 
-### Step 9: Clean up
+### Step 10: Clean up
 
 Delete the application and its resources:
 
