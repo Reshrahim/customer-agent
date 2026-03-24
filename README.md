@@ -1,14 +1,16 @@
-# Customer Support Agent with Radius
+# Radius Customer Support Agent Sample
 
-This sample demonstrates how to build and deploy an **agentic AI application** using [Radius](https://radapp.io) — an open-source platform that enables developers and platform engineers to define, deploy, and manage cloud-native applications across any infrastructure.
+This sample demonstrates how to build and deploy an **agentic AI application** using [Radius](https://radapp.io), an open-source application platform that enables developers and platform engineers to define, deploy, and manage cloud-native applications across any infrastructure.
 
-The application is a customer support agent for the fictional **Contoso Online Store**. Unlike a simple chatbot, this agent autonomously reasons about customer requests, decides which tools to use, takes actions (like cancelling orders or initiating returns), and chains multiple operations together — all powered by [Azure OpenAI](https://learn.microsoft.com/azure/ai-services/openai/) function calling.
-
-### Why Radius?
+## Why Radius?
 
 Building AI applications today is hard. A developer who just wants to build an AI agent goes through the toil of understanding infrastructure dependencies like Azure OpenAI deployments, configuring AI Search indexes, setting up managed identities with the right RBAC roles, provisioning storage accounts and more over conforming to the requirements of the enterprise. This creates a high barrier to entry for developers and slows down innovation.
 
-Radius solves this by enabling **platform engineers** codify all that infrastructure into reusable **Recipes** that could be shared across an organization. The developer just declares what they need in a simple `app.bicep` (an AI agent, a database, a frontend) and everything else is handled behind the scenes.
+Radius solves this by enabling **platform engineers** to define abstract, application-oriented **Resource Types** and, separately, **Recipes** which implement those Resource Types using Infrastructure as Code (IaC). The developer simply declares what application resources they need (an AI agent, a database, a frontend) in an application definition, then Radius handles the deployment of cloud resources.
+
+## Customer Support Agent
+
+This sample is a customer support agent application for the fictional **Contoso Online Store**. Unlike a simple chatbot, this agent autonomously reasons about customer requests, decides which tools to use, takes actions (like cancelling orders or initiating returns), and chains multiple operations together.  It uses several Azure services including [Azure OpenAI](https://learn.microsoft.com/azure/ai-services/openai/).
 
 Below is a high-level architecture diagram of the application.
 
@@ -62,9 +64,18 @@ By the end of this walkthrough, you will:
 
 Before you begin, you need:
 
-- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) with an active subscription
-- [Radius CLI](https://docs.radapp.io/tutorials/install-radius/#install-the-radius-cli)
-- [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) for accessing the AKS cluster
+- An Azure subscription
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) installed
+- [Radius CLI](https://docs.radapp.io/tutorials/install-radius/#install-the-radius-cli) installed
+- [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) installed
+
+> [!TIP]
+> This walkthrough uses Bash syntax. On Windows, use one of:
+> - WSL (recommended)
+> - Git Bash
+> - Azure Cloud Shell
+>
+> PowerShell users can follow along with minor syntax adjustments (examples provided where needed).
 
 ---
 
@@ -82,7 +93,13 @@ cd customer-agent
 Run the setup script to create an Azure resource group, AKS cluster, service principal, and register the resource providers required for this application:
 
 ```bash
+# Bash
 ./scripts/setup-azure.sh --location westus3 --resource-group customer-agent --cluster-name customer-agent-aks
+```
+
+```powershell
+# PowerShell
+bash ./scripts/setup-azure.sh --location westus3 --resource-group customer-agent --cluster-name customer-agent-aks
 ```
 
 > [!NOTE] 
@@ -237,10 +254,24 @@ rad group create azure
 Register the Azure credential using the service principal from Step 2:
 
 ```bash
+# Bash
 source .azure-sp.env && rad credential register azure sp \
   --client-id $AZURE_CLIENT_ID \
   --client-secret $AZURE_CLIENT_SECRET \
   --tenant-id $AZURE_TENANT_ID
+```
+
+```powershell
+# PowerShell
+Get-Content .azure-sp.env | ForEach-Object {
+  $name, $value = $_ -split '=', 2
+  Set-Item -Path Env:$name -Value $value
+}
+
+rad credential register azure sp `
+  --client-id $env:AZURE_CLIENT_ID `
+  --client-secret $env:AZURE_CLIENT_SECRET `
+  --tenant-id $env:AZURE_TENANT_ID
 ```
 
 Verify the credential is registered:
@@ -257,10 +288,22 @@ azure     true
 Now deploy the environment. This will create the environment, register the recipes, and provision the shared PostgreSQL and Blob Storage resources:
 
 ```bash
-source .azure-sp.env
-rad deploy radius/env.bicep --group azure \
+# Bash
+source .azure-sp.env && rad deploy radius/env.bicep --group azure \
   -parameters azureSubscriptionId=$AZURE_SUBSCRIPTION_ID \
   -parameters azureResourceGroup=$AZURE_RESOURCE_GROUP
+```
+
+```powershell
+# PowerShell
+Get-Content .azure-sp.env | ForEach-Object {
+  $name, $value = $_ -split '=', 2
+  Set-Item -Path Env:$name -Value $value
+}
+
+rad deploy radius/env.bicep --group azure `
+  -parameters azureSubscriptionId=$env:AZURE_SUBSCRIPTION_ID `
+  -parameters azureResourceGroup=$env:AZURE_RESOURCE_GROUP
 ```
 
 > [!NOTE]
@@ -270,9 +313,18 @@ rad deploy radius/env.bicep --group azure \
 Create a workspace so the `rad` CLI knows which environment and group to use by default:
 
 ```bash
+# Bash
 rad workspace create kubernetes azure \
   --context $(kubectl config current-context) \
   --environment azure \
+  --group azure
+```
+
+```powershell
+# PowerShell
+rad workspace create kubernetes azure `
+  --context (kubectl config current-context) `
+  --environment azure `
   --group azure
 ```
 
@@ -316,6 +368,8 @@ The `knowledge-base/` folder contains three PDF documents:
 Upload them to the blob storage account that was provisioned in the previous step:
 
 ```bash
+# Bash
+
 # Get the storage account name (provisioned by the blobstorage recipe)
 STORAGE_ACCOUNT=$(az storage account list --resource-group customer-agent \
   --query "[?tags.\"radius-resource-type\"=='Radius.Storage/blobStorages'].name" -o tsv)
@@ -326,6 +380,24 @@ az storage blob upload-batch \
   --destination documents \
   --source knowledge-base/ \
   --pattern "*.pdf" \
+  --overwrite
+```
+
+```powershell
+# PowerShell
+
+# Get the storage account name (provisioned by the blobstorage recipe)
+$STORAGE_ACCOUNT = az storage account list `
+  --resource-group customer-agent `
+  --query "[?tags.\"radius-resource-type\"=='Radius.Storage/blobStorages'].name" `
+  -o tsv
+
+# Upload all PDFs to the 'documents' container
+az storage blob upload-batch `
+  --account-name $STORAGE_ACCOUNT `
+  --destination documents `
+  --source knowledge-base/ `
+  --pattern "*.pdf" `
   --overwrite
 ```
 
