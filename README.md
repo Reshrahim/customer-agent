@@ -6,7 +6,7 @@ The application is a customer support agent for the fictional **Contoso Online S
 
 ### Why Radius?
 
-Building AI applications today is hard. A developer who just wants to build an AI agent goes through the toil of understanding infrastructure dependencies like Azure OpenAI deployments, configuring AI Search indexes, setting up managed identities with the right RBAC roles, provisioning storage accounts, current environments, and more over conforming to the requirements of the enterprise. This creates a high barrier to entry for developers and slows down innovation.
+Building AI applications today is hard. A developer who just wants to build an AI agent goes through the toil of understanding infrastructure dependencies like Azure OpenAI deployments, configuring AI Search indexes, setting up managed identities with the right RBAC roles, provisioning storage accounts and more over conforming to the requirements of the enterprise. This creates a high barrier to entry for developers and slows down innovation.
 
 Radius solves this by enabling **platform engineers** codify all that infrastructure into reusable **Recipes** that could be shared across an organization. The developer just declares what they need in a simple `app.bicep` (an AI agent, a database, a frontend) and everything else is handled behind the scenes.
 
@@ -36,36 +36,18 @@ Below is a high-level architecture diagram of the application.
 
 ## 📁 Repository structure
 
->This application is purely vibe coded using Copilot CLI. Please ignore discrepancies in code formatting or structure — the focus is on demonstrating the Radius concepts and developer experience. The repo is organized into three main folders
-
 ```
-├── knowledge-base/                    # PDF documents for the knowledge base
-│   ├── contoso-shipping-policy.pdf
-│   ├── contoso-return-refund-policy.pdf
-│   └── contoso-loyalty-program.pdf
-├── scripts/
-│   └── setup-azure.sh                # One-command Azure prerequisite setup
+├── knowledge-base/          # Contoso policy PDFs for RAG
+├── scripts/setup-azure.sh   # One-command Azure prerequisite setup
 ├── src/
-│   ├── agent-runtime/                 # The agentic backend (FastAPI + OpenAI tool calling)
-│   │   ├── app.py
-│   │   ├── Dockerfile
-│   │   └── requirements.txt
-│   └── web/                           # Chat UI frontend (nginx)
-│       ├── index.html
-│       └── style.css
+│   ├── agent-runtime/       # Agentic backend (FastAPI + OpenAI tool calling)
+│   └── web/                 # Chat UI frontend (nginx)
 └── radius/
-    ├── app.bicep                      # Application definition (what the developer writes)
-    ├── env.bicep                      # Environment + shared resources
-    ├── bicepconfig.json               # Bicep extension references
-    ├── types/                         # Custom resource type schemas
-    │   ├── agent.yaml                 # Radius.AI/agents
-    │   ├── postgreSqlDatabases.yaml   # Radius.Data/postgreSqlDatabases
-    │   └── blobStorages.yaml          # Radius.Storage/blobStorages
-    ├── extensions/                    # Generated Bicep extensions (.tgz)
-    └── recipes/                       # Infrastructure-as-code recipes
-        ├── agent.bicep                # Provisions OpenAI, Search, Identity, containers, etc.
-        ├── postgres.bicep             # Provisions PostgreSQL + seed data
-        └── blobstorage.bicep          # Provisions Storage Account + blob container
+    ├── app.bicep             # Application definition (what the developer writes)
+    ├── env.bicep             # Environment + shared resources
+    ├── types/                # Custom resource type schemas (AI, Data, Storage)
+    ├── extensions/           # Generated Bicep extensions (.tgz)
+    └── recipes/              # IaC templates (agent, postgres, blobstorage)
 ```
 
 ## 🎯 Goals
