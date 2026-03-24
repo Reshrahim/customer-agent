@@ -43,6 +43,8 @@ Below is a high-level architecture diagram of the application.
 │   ├── contoso-shipping-policy.pdf
 │   ├── contoso-return-refund-policy.pdf
 │   └── contoso-loyalty-program.pdf
+├── scripts/
+│   └── setup-azure.sh                # One-command Azure prerequisite setup
 ├── src/
 │   ├── agent-runtime/                 # The agentic backend (FastAPI + OpenAI tool calling)
 │   │   ├── app.py
@@ -80,67 +82,81 @@ Before you begin, you need:
 
 - [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) with an active subscription
 - [Radius CLI](https://docs.radapp.io/tutorials/install-radius/#install-the-radius-cli)
-- An Azure Kubernetes Service (AKS) cluster with [Radius installed](https://docs.radapp.io/tutorials/install-radius/#install-radius)
-  - If you are using an existing AKS cluster, you need to make sure you have cluster-admin permissions to install Radius and deploy applications
-- If you are using a new Azure subscription, certain resource providers may not be registered by default. Follow the [instructions](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/resource-providers-and-types#register-resource-provider-1) to add the following resource providers to your subscription: Microsoft.Storage, Microsoft.DBforPostgreSQL, Microsoft.ContainerInstance, Microsoft.OperationalInsights, Microsoft.Search, Microsoft.CognitiveServices
+- [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) for accessing the AKS cluster
 
 ---
 
 ## 🚀 Walkthrough
 
-### Step 0 : Verify all prerequisites are in place
-
-Verify you are logged into Azure CLI
+### Step 1 : Clone the repository
 
 ```bash
-az account show
+git clone https://github.com/Reshrahim/customer-agent.git
+cd customer-agent
 ```
 
-Verify Radius CLI is installed
+### Step 2 : Set up prerequisites in Azure
+
+Run the setup script to create an Azure resource group, AKS cluster, service principal, and register the resource providers required for this application:
 
 ```bash
-rad version
+./scripts/setup-azure.sh --location westus3 --resource-group customer-agent --cluster-name customer-agent-aks
 ```
 
-you should see an output similar to this:
+> [!NOTE] 
+> This takes a few minutes (mostly AKS cluster creation).
+>  - `--resource-group <name>` name of the resource group to create. The script will create one if it doesn't exist. Defaults to `customer-agent`.
+>  - `--location <region>` region for the resource group and AKS cluster. Defaults to `westus3`.
+>  - `--cluster-name <your-cluster-name>` name of the AKS cluster. The script will detect it and skip creation if it already exists. Defaults to `customer-agent-aks`.
 
+The script will output the next steps. Service principal credentials are saved to `.azure-sp.env` for use in the next step.
+
+<details>
+<summary>What the script does (click to expand)</summary>
+
+1. Registers required Azure resource providers (Storage, PostgreSQL, ContainerInstance, OperationalInsights, Search, CognitiveServices)
+2. Creates a resource group
+3. Creates an AKS cluster with 1 node (`Standard_B2as_v2`)
+4. Creates a service principal with "Owner" role scoped to the resource group
+5. Saves credentials to `.azure-sp.env`
+
+</details>
+
+### Step 3 : Install Radius and register the Azure credential
+
+Verify the current kubectl context is set to the AKS cluster created in the previous step:
+
+```bash
+kubectl config current-context
 ```
-CLI Version Information:
-RELEASE   VERSION   BICEP     COMMIT
-0.55.0    v0.55.0   0.41.2    4142176e438a8e81b21f5cd41b85f3ab73ed86b2
 
-Control Plane Information:
-STATUS     VERSION
-Installed  0.55.0
+Install Radius in your AKS cluster:
+
+```bash
+rad install kubernetes
 ```
 
-Verify Radius is installed in your Kubernetes cluster
+Verify the installation:
 
 ```bash
 kubectl get pods -n radius-system
 ```
-you should see an output similar to this:
+
+You should see all Radius pods running:
 
 ```
 NAME                READY   STATUS    RESTARTS   AGE
 applications-rp      1/1     Running   0          1m
 bicep-de             1/1     Running   0          1m
 controller           1/1     Running   0          1m
-dashboard            1/1     Running   0          1m 
+dashboard            1/1     Running   0          1m
 dynamic-rp           1/1     Running   0          1m
 ucp                  1/1     Running   0          1m
 ```
 
-### Step 1: Create the resource types required by the application
+### Step 1: Create the Resource Types required by the application
 
-Resource types are application abstractions that are infrastructure/cloud provider agnostic. They define the properties that developers can set when they declare resources in their `app.bicep`, and they map to recipes that provision the underlying infrastructure.
-
-Each type definition in `radius/types/` is a YAML file that declares:
-- A **namespace and type name** (e.g., `Radius.AI/agents`)
-- A **schema** describing the properties developers can set (like `prompt`, `model`, `enableObservability`)
-- **Read-only properties** that recipes output back (like `agentEndpoint`)
-
-For example, `radius/types/agent.yaml` defines the `Radius.AI/agents` type. A developer using this type only needs to specify a prompt and model name — they don't need to know that behind the scenes, the recipe provisions 8 Azure resources with role assignments and networking.
+Resource Types are application abstractions that are infrastructure/cloud provider agnostic. They define the properties that developers can set when they declare resources in their `app.bicep`, and they map to recipes that provision the underlying infrastructure
 
 Register all three types with Radius:
 
@@ -149,6 +165,13 @@ rad resource-type create -f radius/types/agent.yaml
 rad resource-type create -f radius/types/postgreSqlDatabases.yaml
 rad resource-type create -f radius/types/blobStorages.yaml
 ```
+
+Each type definition in `radius/types/` is a YAML file that declares:
+- A **namespace and type name** (e.g., `Radius.AI/agents`)
+- A **schema** describing the properties developers can set (like `prompt`, `model`, `enableObservability`)
+- **Read-only properties** that recipes output back (like `agentEndpoint`)
+
+For example, `radius/types/agent.yaml` defines the `Radius.AI/agents` type. A developer using this type only needs to specify a prompt and model name — they don't need to know that behind the scenes, the recipe provisions 8 Azure resources with role assignments and networking.
 
 You can verify the types were created:
 
@@ -167,9 +190,9 @@ Radius.Storage/blobStorages             Radius.Storage           ["2025-08-01-pr
 
 ### Step 2: Bicep extensions
 
-Bicep extensions are similar to libraries that you import into your code. An extension is generated from a resource type definition and contains the necessary metadata and type information for Bicep to provide type safety and autocompletion when developers write their `app.bicep`.
+Bicep extensions are similar to libraries that you import into your code. An extension is generated from a Resource Type definition and contains the necessary metadata and type information for Bicep to provide type safety and autocompletion when developers write their `app.bicep`.
 
-> [!NOTE]
+> [!IMPORTANT]
 >
 > **No action is needed in this step.** The extensions have already been generated and are checked into the repo as `.tgz` files in `radius/extensions/`. The `bicepconfig.json` references them.
 
@@ -188,6 +211,9 @@ The `radius/bicepconfig.json` file maps extension names to their local `.tgz` fi
 
 This enables you to write `extension radiusAi` in your `app.bicep` and then use `resource agent 'Radius.AI/agents@2025-08-01-preview'` with full type safety.
 
+<details>
+<summary>Regenerating extensions after modifying a type (click to expand)</summary>
+
 If you modify a type definition, regenerate its extension:
 
 ```bash
@@ -196,11 +222,13 @@ rad bicep publish-extension -f radius/types/postgreSqlDatabases.yaml --target ra
 rad bicep publish-extension -f radius/types/blobStorages.yaml --target radius/extensions/radiusstorage.tgz
 ```
 
+</details>
+
 ### Step 3: Understand the Recipes
 
-A recipe defines *how* to provision a resource-type. Recipes are Bicep templates that Radius executes when you deploy a resource of a given type. They receive context from Radius (the resource name, properties, connections) and output infrastructure.
+A Recipe defines *how* to provision a Resource Type. Recipes are Infrastructure as Code templates, Bicep in this sample, that Radius executes when you deploy a resource of a given type. They receive context from Radius (the resource name, properties, connections) and output infrastructure.
 
-> [!NOTE]
+> [!IMPORTANT]
 >
 > **No action is needed in this step.** The recipes have already been published to `ghcr.io/reshrahim/recipes/`.
 
@@ -214,7 +242,10 @@ This sample has three recipes:
 
 The key insight is that the **developer never sees these recipes**. They just declare `resource agent 'Radius.AI/agents' = { ... }` in their `app.bicep`, and Radius automatically finds and executes the matching recipe configured by the platform engineer in the environment.
 
-Recipes are published to OCI registries (like container images). If you make changes, republish them to your own registry:
+<details>
+<summary>Republishing recipes after making changes (click to expand)</summary>
+
+Bicep templates are published to OCI registries (like container images). If you make changes, republish them to your own registry:
 
 ```bash
 rad bicep publish \
@@ -230,63 +261,34 @@ rad bicep publish \
   --target br:ghcr.io/<org-name>/recipes/blobstorage:1.0
 ```
 
+</details>
+
 ### Step 4: Create the Radius Environment
 
 A Radius Environment is where you configure *which* recipes to use and *where* Azure resources should be provisioned.
 
-The `radius/env.bicep` file does three things:
-1. Creates the environment with an Azure provider scope (subscription + resource group)
-2. Registers recipes — mapping each resource type to its recipe template in the OCI registry
-3. Creates **shared resources** (PostgreSQL and Blob Storage) that multiple applications can reference
-
-Shared resources are deployed at the environment level because they are long-lived infrastructure that multiple applications can reference.
-
-First, create a Radius resource group and an Azure resource group:
+Create a Radius resource group
 
 ```bash
 rad group create azure
 ```
 
-Now create the Azure resource group where the environment will provision resources:
+Register the Azure credential using the service principal from Step 2:
 
 ```bash
-az group create --name customer-agent --location <location>
+source .azure-sp.env && rad credential register azure sp \
+  --client-id $AZURE_CLIENT_ID \
+  --client-secret $AZURE_CLIENT_SECRET \
+  --tenant-id $AZURE_TENANT_ID
 ```
 
-You need to grant the Radius control plane permission to deploy resources to this resource group. Run the following command and follow the instructions to assign the "Owner" role to the Radius service principal for the `customer-agent` resource group:
-
-```bash
-az ad sp create-for-rbac --name "radius-sp" --role Owner --scopes /subscriptions/<subscription-id>/resourceGroups/<resource-group>
-```
-
-```
-{
-  "appId": "myAppId",
-  "displayName": "myServicePrincipalName",
-  "password": "myServicePrincipalPassword",
-  "tenant": "myTentantId"
-}
-```
-
-Create a Radius credential with the service principal details:
-
-```bash
-rad credential register azure sp --client-id myClientId  --client-secret myClientSecret  --tenant-id myTenantId
-```
-
-```
-Registering credential for "azure" cloud provider in Radius installation "Kubernetes (context=agent-re)"...
-Successfully registered credential for "azure" cloud provider. Tokens may take up to 30 seconds to refresh.
-```
-
-Check if the credential is registered:
+Verify the credential is registered:
 
 ```bash
 rad credential list
 ```
 
 ```
-Listing credentials for all cloud providers for Radius installation "Kubernetes (context=agent-re)"...
 PROVIDER  REGISTERED
 azure     true
 ```
@@ -294,14 +296,15 @@ azure     true
 Now deploy the environment. This will create the environment, register the recipes, and provision the shared PostgreSQL and Blob Storage resources:
 
 ```bash
+source .azure-sp.env
 rad deploy radius/env.bicep --group azure \
-  -p azureSubscriptionId=$(az account show --query id -o tsv) \
-  -p azureResourceGroup=customer-agent
+  -parameters azureSubscriptionId=$AZURE_SUBSCRIPTION_ID \
+  -parameters azureResourceGroup=$AZURE_RESOURCE_GROUP
 ```
 
 > [!NOTE]
 >
-> This step takes a 10 minutes because it provisions an Azure PostgreSQL Flexible Server and an Azure Storage Account.
+> This step takes 10 minutes because it provisions an Azure PostgreSQL Flexible Server and an Azure Storage Account.
 
 Create a workspace so the `rad` CLI knows which environment and group to use by default:
 
@@ -315,15 +318,10 @@ rad workspace create kubernetes azure \
 Confirm the environment was created:
 
 ```bash
-rad environment list
+rad environment show -o json
 ```
 
-```
-RESOURCE   TYPE                            GROUP    STATE
-azure      Applications.Core/environments  azure    Succeeded
-```
-
-Confirm the recipes were registered:
+Confirm the recipes were added to the environment:
 
 ```bash
 rad recipe list
@@ -336,7 +334,14 @@ default   Radius.Data/postgreSqlDatabases   bicep          ghcr.io/reshrahim/rec
 default   Radius.Storage/blobStorages       bicep          ghcr.io/reshrahim/recipes/blobstorage:1.0
 ```
 
-**Recap** You just created a Radius environment scoped to your Azure subscription and resource group, registered three recipes that define how to provision Agents, PostgreSQL databases, and blob storage, and deployed shared PostgreSQL and Storage resources that can be referenced by applications.
+<details>
+<summary>What env.bicep does (click to expand)</summary>
+
+1. Creates the environment with an Azure provider scope (subscription + resource group)
+2. Maps each Resource Type to its Recipe template stored in the OCI registry
+3. Creates shared PostgreSQL and Blob Storage resources that multiple applications can reference
+
+</details>
 
 ### Step 5: Upload knowledge base documents
 
@@ -369,16 +374,16 @@ Once uploaded, the AI Search indexer (created by the agent recipe in the next st
 
 This is where the developer experience comes together. The `app.bicep` file is what a developer writes — it's simple and declarative. It references the shared PostgreSQL and Blob Storage resources, declares an AI agent with a prompt and model, connects everything together, and adds a frontend UI.
 
-Take a look at `radius/app.bicep`:
-- It references shared resources (`postgresql`, `blobstorage`) using the `existing` keyword
-- It creates a `Radius.AI/agents` resource with a system prompt, model name, and **connections** to both shared resources
-- It creates a `frontend-ui` container connected to the agent
-
 Deploy the application:
 
 ```bash
 rad deploy radius/app.bicep
 ```
+
+Take a look at `radius/app.bicep`:
+- It references shared resources (`postgresql`, `blobstorage`) using the `existing` keyword
+- It creates a `Radius.AI/agents` resource with a system prompt, model name, and **connections** to both shared resources
+- It creates a `frontend-ui` container connected to the agent
 
 > [!NOTE]
 >
@@ -416,17 +421,25 @@ Open **http://localhost:3000** in your browser.
 Here are some things to try that demonstrate the agentic behavior:
 
 **Simple order lookup** (single tool call):
-> "What's the status of ORD-10001?"
+
+```
+What's the status of ORD-10001?
+```
 
 The agent will call `lookup_order` and respond with the order details from the database.
 
 **Policy question** (knowledge base search):
-> "What's your return policy for electronics?"
+```
+What's your return policy for electronics?
+```
 
 The agent will call `search_knowledge_base` and respond using information from the uploaded PDF documents.
 
 **Multi-step tool chaining** (multiple tool calls in sequence):
-> "I want to return the headphones from order ORD-10001. Can you help?"
+
+```
+I want to return the headphones from order ORD-10001. Can you help?
+```
 
 The agent will:
 1. Call `lookup_order` to get the order details
@@ -435,7 +448,9 @@ The agent will:
 4. After you confirm, call `initiate_return` to create the return record
 
 **Escalation** (knowing when to hand off):
-> "This is unacceptable, I've been waiting 3 weeks and nobody can help me. I want to speak to a manager."
+```
+This is unacceptable, I've been waiting 3 weeks and nobody can help me. I want to speak to a manager.
+```
 
 The agent will recognize the customer's frustration and call `create_support_ticket` to escalate to a human agent.
 
@@ -447,11 +462,16 @@ Delete the application and its resources:
 rad app delete -a customer-agent
 ```
 
-> [!NOTE]
->
-> This deletes the Radius application and recipe-provisioned Azure resources (OpenAI, Search, etc.). The shared environment resources (PostgreSQL, Blob Storage) deployed via `env.bicep` are **not** deleted — they belong to the environment, not the application.
->
-> To fully clean up Azure resources, delete the resource group:
-> ```bash
-> az group delete --name customer-agent --yes
-> ```
+This deletes the Radius application and recipe-provisioned Azure resources (OpenAI, Search, etc.). The shared environment resources (PostgreSQL, Blob Storage) deployed via `env.bicep` are **not** deleted — they belong to the environment, not the application.
+
+To fully clean up Azure resources, delete the resource group:
+
+ ```bash
+az group delete --name customer-agent --yes
+```
+
+Uninstall Radius from the AKS cluster if you no longer need it:
+
+```bash
+rad uninstall kubernetes --purge  
+```

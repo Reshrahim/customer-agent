@@ -45,6 +45,7 @@ var tags = {
 // Used by the deployment script to set up AI Search indexes.
 // The agent-runtime container uses API keys instead of managed identity
 
+
 resource agentIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: '${name}-identity'
   location: location
