@@ -59,19 +59,3 @@ resource env 'Applications.Core/environments@2023-10-01-preview' = {
     }
   }
 }
-
-resource postgresql 'Radius.Data/postgreSqlDatabases@2025-08-01-preview' = {
-  name: 'postgresql'
-  properties: {
-    environment: env.id
-    size: 'S'
-  }
-}
-
-resource blobstorage 'Radius.Storage/blobStorages@2025-08-01-preview' = {
-  name: 'blobstorage'
-  properties: {
-    environment: env.id
-    container: 'documents'
-  }
-}

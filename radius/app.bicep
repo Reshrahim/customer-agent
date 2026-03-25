@@ -1,16 +1,10 @@
 extension radius
-
 extension radiusAi
-
 extension radiusData
-
 extension radiusStorage
 
 @description('The Radius environment to deploy to')
 param environment string
-
-@description('The application name')
-param applicationName string = 'customer-agent'
 
 @description('Container registry for the application images')
 param registry string = 'ghcr.io/reshrahim'
@@ -44,20 +38,21 @@ IMPORTANT: You MUST only reference information that is explicitly present in the
 Always sign off warmly and ask if there's anything else you can help with.'''
 
 resource app 'Applications.Core/applications@2023-10-01-preview' = {
-  name: applicationName
+  name: 'contoso-support-agent'
   location: 'global'
   properties: {
     environment: environment
   }
 }
 
-// Shared resources
+// Shared resource Orders Database : postgreSqlDatabases
 resource postgresql 'Radius.Data/postgreSqlDatabases@2025-08-01-preview' existing = {
-  name: 'postgresql'
+  name: 'contoso-db'
 }
 
+// Shared resource Store Policies : blobStorages
 resource blobstorage 'Radius.Storage/blobStorages@2025-08-01-preview' existing = {
-  name: 'blobstorage'
+  name: 'contoso-knowledge-base'
 }
 
 // ── Customer Service Agent : agents ─────────────────────────
@@ -80,7 +75,7 @@ resource agent 'Radius.AI/agents@2025-08-01-preview' = {
   }
 }
 
-// ── Web App : containers ────────────────────────────────────
+// ── Front End : containers ────────────────────────────────────
 resource webapp 'Applications.Core/containers@2023-10-01-preview' = {
   name: 'frontend-ui'
   location: 'global'
